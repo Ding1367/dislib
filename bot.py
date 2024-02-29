@@ -51,11 +51,12 @@ class GatewayMessage:
             self.sequence = seq
     def payload(self):
         return {'d': self.data, 'op': self.opcode, 't': self.event, 's': self.sequence}
-    async def send(self, ws):
+    async def send(self, ws, ret=True):
         await ws.send(json.dumps(self.payload()))
         resp = json.loads(await ws.recv())
-        mesg = GatewayMessage(resp['op'], resp['d'], resp['t'], resp['s'])
-        return mesg
+        if ret:
+            mesg = GatewayMessage(resp['op'], resp['d'], resp['t'], resp['s'])
+            return mesg
 
 def is_receivable(code):
     if code == GatewayOpcodes.EVENT: return True
@@ -80,6 +81,7 @@ class Bot:
         self.heartbeats = 0
         self.pulse = -1
         self._eventListener = {}
+        self._heartbeat_task = None 
 
     async def _heartbeat(self):
         try:
@@ -89,12 +91,15 @@ class Bot:
                 if self.heartbeats == 1:
                     jitter = random()
 
-                p = self.pulse
+                p = self.pulse / 1000
+                print(p * jitter)
                 await sleep(p * jitter)
                 await GatewayMessage(GatewayOpcodes.HEARTBEAT, None, None, None).send(self._client)
+                print("heartbeat")
+                print()
         except CancelledError:
             print("Stopping heartbeat task")
-            self._heartbeat_task.close()
+            await self._heartbeat_task.cancel()
 
     async def _call_event(self, event_name, *args):
         if not (event_name in self._eventListener):
@@ -121,12 +126,19 @@ class Bot:
         return wrapper
 
     async def _recv(self, mesg):
+        print()
+        print("RECEIVED")
+        print(mesg.payload())
+        print(mesg.opcode)
+        print(mesg.opcode != 0)
+        print()
         op = mesg.opcode
         data = mesg.data
         await self._call_event("intercept_" + str(op), data)
         if op != 0:
             if op == GatewayOpcodes.HELLO:
-                self._heartbeat_task = await asyncio.create_task(self._heartbeat())
+                print('hi!')
+                self._heartbeat_task = asyncio.create_task(self._heartbeat())
         else:
             event = mesg.event
             await self._call_event(event, data)
@@ -161,9 +173,9 @@ class Bot:
             mesg = GatewayMessage(GatewayOpcodes.IDENTIFY, data, None, None)
 
             hello = GatewayMessage.from_received(await conn.recv())
-            await self._recv(hello)
             data = hello.data
             self.pulse = data['heartbeat_interval']
+            await self._recv(hello)
 
             event = await mesg.send(conn)
             data = event.data
@@ -182,6 +194,6 @@ class Bot:
         await self._heartbeat_task.cancel()
 
 if __name__ == "__main__":
-    token = 'MTExMzk3NDY4MDk3MDM0NjU0Ng.GHoiYe.Dj4kNpZ3DUd2R0WUYxDFZ-vySnb1MqFqULx93E'
+    token = 'no'
     bot = Bot(token)
     bot.run()

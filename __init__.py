@@ -21,3 +21,9 @@ def convert_classes(obj):
         if hasattr(obj[x], 'payload'):
             obj[x] = convert_classes(obj[x])
     return obj
+
+def add_dicts(a, b):
+    for x in b.keys():
+        a[x] = b[x]
+    return a
+
